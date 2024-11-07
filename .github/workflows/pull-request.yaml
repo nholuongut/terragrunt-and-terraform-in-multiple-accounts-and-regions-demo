@@ -1,0 +1,150 @@
+name: Pull Request Build
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - makefile
+
+jobs:
+  terrascan:
+    name: terrascan check terraform modules
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v3
+
+      - name: terrascan check
+        continue-on-error: true
+        uses: ./.github/action/terrascan-action
+
+  checkov:
+    name: checkov check terraform modules
+    continue-on-error: true
+    permissions:
+      security-events: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v3
+
+      - name: checkov check
+        continue-on-error: true
+        uses: ./.github/action/checkov-action
+
+  tfsec:
+    name: tfsec check terraform modules
+    continue-on-error: true
+    permissions:
+      security-events: write
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v3
+
+      - name: tfsec check
+        continue-on-error: true
+        uses: ./.github/action/tfsec-action
+
+
+  terragrunt-infracost-action:
+    strategy:
+      matrix:
+        include:
+          - env-dir: dev
+            aws-region: us-east-1
+            aws-account-id: 733051034790
+            aws-role: terragrunt
+            aws: aws
+            aws-audience: sts.amazonaws.com
+
+          - env-dir: prod
+            aws-region: cn-northwest-1
+            aws-account-id: 527109613237
+            aws-role: terragrunt
+            aws: aws-cn
+            aws-audience: sts.cn-northwest-1.amazonaws.com.cn
+
+          - env-dir: stage
+            aws-region: ap-southeast-1
+            aws-account-id: 594962198840
+            aws-role: terragrunt
+            aws: aws
+            aws-audience: sts.amazonaws.com
+
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    permissions:
+      id-token: write
+      actions: read
+    steps:
+
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: infracost estimates the cost
+        uses: ./.github/action/infracost-action
+        with:
+          role-to-assume: arn:${{ matrix.aws }}:iam::${{ matrix.aws-account-id }}:role/${{ matrix.aws-role }}
+          role-session-name: github-action
+          aws-region: ${{ matrix.aws-region }}
+          env-dir: ${{ matrix.env-dir }}
+          aws-audience: ${{ matrix.aws-audience }}
+          infracost_api_key: ${{ secrets.INFRACOST_API_KEY }}
+          create_pr: 'true'
+
+  infracost-report:
+    needs:
+      - terragrunt-infracost-action
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Setup Infracost
+        # https://github.com/infracost/actions
+        # https://github.com/infracost/actions/tree/master/setup for other inputs
+        uses: infracost/actions/setup@v2
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: download-artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: infracost
+          path: ~/infracost
+
+      - name: concat the infracost result
+        working-directory: /home/runner/infracost/
+        run: |
+          infracost output --path "infracost-*.json" --format json --out-file /tmp/infracost.json
+
+      - name: Post Infracost comment
+        run: |
+          infracost comment github --path=/tmp/infracost.json \
+                                      --repo=$GITHUB_REPOSITORY \
+                                      --github-token=${{ github.token }} \
+                                      --pull-request=${{ github.event.pull_request.number }} \
+                                      --behavior=update
+
+          
+
+
+
+
+
+
+
+
+
+

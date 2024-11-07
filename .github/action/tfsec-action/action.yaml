@@ -1,0 +1,23 @@
+name: "tfsec check the terraform module"
+description: tfsec init and check
+inputs:
+  working_directory:
+    required: false
+    default: "."
+    description: "terraform directory"
+
+runs:
+  using: "composite"
+  steps:
+    - name: setup tfsec
+
+      uses: aquasecurity/tfsec-sarif-action@v0.1.4
+      with:
+        sarif_file: tfsec.sarif
+        working_directory: ${{ inputs.working_directory }}
+
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: tfsec.sarif
+        category: tfsec

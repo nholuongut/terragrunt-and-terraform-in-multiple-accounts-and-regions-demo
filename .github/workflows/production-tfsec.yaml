@@ -1,0 +1,26 @@
+name: 'tfsec Check'
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - makefile
+      - images/*
+      - README.md
+jobs:
+  tfsec-action:
+    name: tfsec check terraform modules
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: tfsec check terraform modules
+        uses: ./.github/action/tfsec-action
+        with:
+          working_directory: "./infra/module"

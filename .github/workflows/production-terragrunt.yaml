@@ -1,0 +1,78 @@
+name: 'Deploy Prod Infrastructure'
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - makefile
+      - images/*
+      - README.md
+jobs:
+  terragrunt-action-dev:
+    strategy:
+      matrix:
+        include:
+          - env-dir: dev
+            aws-region: us-east-1
+            aws-account-id: 733051034790
+            aws-role: terragrunt
+            aws: aws
+    name: terragrunt aws dev environment deploy
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: terragrunt plan & apply
+        uses: ./.github/action/terragrunt-action
+        with:
+          role-to-assume: arn:${{ matrix.aws }}:iam::${{ matrix.aws-account-id }}:role/${{ matrix.aws-role }}
+          role-session-name: github-action
+          aws-region: ${{ matrix.aws-region }}
+          env-dir: ${{ matrix.env-dir }}
+
+  terragrunt-action:
+    needs: 
+      - terragrunt-action-dev
+    strategy:
+      matrix:
+        include:
+          - env-dir: prod
+            aws-region: cn-northwest-1
+            aws-account-id: 527109613237
+            aws-role: terragrunt
+            aws: aws-cn
+            aws-audience: sts.cn-northwest-1.amazonaws.com.cn
+
+          - env-dir: stage
+            aws-region: ap-southeast-1
+            aws-account-id: 594962198840
+            aws-role: terragrunt
+            aws: aws
+            aws-audience: sts.amazonaws.com
+
+
+    name: terragrunt prod & stage deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: terragrunt plan & apply
+        uses: ./.github/action/terragrunt-action
+        with:
+          role-to-assume: arn:${{ matrix.aws }}:iam::${{ matrix.aws-account-id }}:role/${{ matrix.aws-role }}
+          role-session-name: github-action
+          aws-region: ${{ matrix.aws-region }}
+          env-dir: ${{ matrix.env-dir }}
+          aws-audience: ${{ matrix.aws-audience }}
+
+

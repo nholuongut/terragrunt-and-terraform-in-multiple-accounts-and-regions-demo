@@ -1,0 +1,108 @@
+name: "infracost estimates the cost"
+description: infracost estimates the cost
+inputs:
+  role-to-assume:
+    required: true
+    description: "AWS IAM role"
+  role-session-name:
+    required: true
+    description: "AWS IAM role session name"
+  env-dir:
+    required: true
+    description: directory with the aws account (mark) folder name
+  aws-region:
+    required: true
+    description: aws region
+  aws-audience:
+    required: false
+    description: "AWS Audience"
+    default: sts.amazonaws.com
+
+  infracost_api_key:
+    required: true
+    description: infracost api key
+  create_pr:
+    required: false
+    default: 'false'
+    description: create pull request message for the infracost
+
+runs:
+  using: "composite"
+  steps:
+    - name: setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_wrapper: false
+
+    - name: Setup Terragrunt
+      uses: autero1/action-terragrunt@v1.3.1
+      with:
+        terragrunt_version: latest
+
+    - name: Sops Binary Installer
+      uses: mdgreenwald/mozilla-sops-action@v1.4.1
+      with:
+        version: 'v3.7.3'
+
+    - name: Setup Infracost
+      # https://github.com/infracost/actions
+      # https://github.com/infracost/actions/tree/master/setup for other inputs
+      uses: infracost/actions/setup@v2
+      with:
+        api-key: ${{ inputs.infracost_api_key }}
+
+    - name: GitHub OIDC Auth to assume AWS IAM Role
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ inputs.role-to-assume }}
+        role-session-name: ${{ inputs.role-session-name }}
+        aws-region: ${{ inputs.aws-region }}
+        audience: ${{ inputs.aws-audience }}
+
+
+    - name: terragrunt plan
+      shell: bash
+      run: cd terragrunt/${{ inputs.env-dir }}/${{ inputs.aws-region }} && terragrunt run-all --terragrunt-non-interactive --terragrunt-ignore-external-dependencies plan -out tfplan.binary
+
+    - name: check the infra cost
+      shell: bash
+      run: |
+        plans=($(find terragrunt/${{ inputs.env-dir }}/${{ inputs.aws-region }} -name tfplan.binary))
+        # Generate plan JSON files by running terragrunt show for each plan file
+        planjsons=()
+        for plan in "${plans[@]}"; do
+          # Find the Terraform working directory for running terragrunt show
+          # We want to take the dir of the plan file and strip off anything after the .terraform-cache dir
+          # to find the location of the Terraform working directory that contains the Terraform code
+          dir=$(dirname $plan)
+          dir=$(echo "$dir" | sed 's/\(.*\)\/\.terragrunt-cache\/.*/\1/')
+        
+          # Customize this to how you run Terragrunt
+          echo "Running terragrunt show for $(basename $plan) for $dir"
+          terragrunt show -json $(basename $plan) --terragrunt-working-dir=$dir --terragrunt-no-auto-init > $dir/plan.json
+          planjsons=(${planjsons[@]} "$dir/plan.json")
+        done
+        
+        # Sort the plan JSONs so we get consistent project ordering in the config file
+        IFS=$'\n' planjsons=($(sort <<<"${planjsons[*]}"))
+        
+        # Generate Infracost config file
+        echo -e "version: 0.1\n\nprojects:\n" > infracost-generated.yml
+        for planjson in "${planjsons[@]}"; do
+          echo -e "  - path: $planjson" >> infracost-generated.yml
+        done
+        
+        # Infracost CLI commands 
+        infracost breakdown --config-file=infracost-generated.yml 
+        # generate cost result
+        infracost breakdown --config-file=infracost-generated.yml --format=json --out-file=/tmp/infracost-${{ inputs.env-dir }}-${{ inputs.aws-region }}.json
+
+    - name: archive the infracost result
+      uses: actions/upload-artifact@v3
+      with:
+        name: infracost
+        path: /tmp/infracost-${{ inputs.env-dir }}-${{ inputs.aws-region }}.json
+
+
+
+
