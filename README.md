@@ -602,9 +602,6 @@ https://github.com/nholuongut/infra-multi-account-region-startup-kit/pull/5
 
 If you have any questions, please contact with the email contact@startupcloud.tech
 
-
-
-
 # 🚀 I'm are always open to your feedback.  Please contact as bellow information:
 ### [Contact ]
 * [Name: nho Luong]
@@ -614,7 +611,7 @@ If you have any questions, please contact with the email contact@startupcloud.te
 * [Email Address](luongutnho@hotmail.com)
 
 ![](https://i.imgur.com/waxVImv.png)
-![](Donate.png)
+![](Donate.jpg)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nholuong)
 
 # License
